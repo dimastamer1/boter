@@ -7,7 +7,11 @@ const path = require('path');
 const bot = new Telegraf('7523881725:AAFRjNltWDXco--Pd2N93WqfZQhSwpuFdnM');
 const API_TOKEN = 'jihhwop0pr8i763ojjhjjp990';
 
-
+// Увеличиваем таймауты для бота
+bot.telegram.options.agent = null;
+bot.telegram.options.apiMode = 'bot';
+bot.telegram.options.webhookReply = false;
+bot.telegram.options.handlerTimeout = 600000; // 10 минут
 
 // Хранилища данных
 const mediaGroups = new Map();
@@ -446,20 +450,14 @@ function getHelpMenu() {
   ]);
 }
 
-// Глобальный обработчик ошибок для callback-запросов
-bot.catch((err, ctx) => {
-  console.error(`Error for ${ctx.updateType}:`, err);
-  if (ctx.callbackQuery) {
-    return ctx.answerCbQuery('⚠️ Произошла ошибка').catch(() => {});
-  }
-});
-
-// Безопасный ответ на callback-запросы
+// Улучшенный обработчик callback-запросов
 async function safeAnswerCbQuery(ctx, text, showAlert = false) {
   try {
     await ctx.answerCbQuery(text || '', { show_alert: showAlert });
+    return true;
   } catch (e) {
-    console.log('Callback answer error:', e.message);
+    console.warn('Callback answer error:', e.message);
+    return false;
   }
 }
 
@@ -638,111 +636,121 @@ bot.action('process', async (ctx) => {
   }).catch(e => console.error('Ошибка редактирования сообщения:', e));
 });
 
-for (let i = 1; i <= 6; i++) {
-  bot.action(`process_${i}`, async (ctx) => {
-    const userId = ctx.from.id;
-    const lastPhotos = userLastPhotos.get(userId);
-    const settings = userSettings.get(userId) || getDefaultSettings();
-    
-    if (!lastPhotos || lastPhotos.length === 0) {
-      return safeAnswerCbQuery(ctx, '❌ Нет фото для обработки');
-    }
-    
-    await safeAnswerCbQuery(ctx, `Обрабатываю ${i} раз...`);
-    
-    try {
-      // Удаляем предыдущее сообщение с меню
-      await ctx.deleteMessage().catch(e => {});
-    } catch (e) {
-      console.error('Ошибка удаления сообщения:', e);
-    }
-    
-    const processingMessage = await ctx.replyWithMarkdown(`🔄 *Обрабатываю ${lastPhotos.length} фото ${i} раз с мощностью ${getIntensityName(settings.intensity)}...*\n_Это может занять время..._`, {
-      parse_mode: 'Markdown'
-    }).catch(e => console.error('Ошибка отправки сообщения:', e));
-
-    // Обрабатываем i раз
-    for (let j = 0; j < i; j++) {
-      const results = [];
-      for (let k = 0; k < lastPhotos.length; k++) {
-        try {
-          // Обновляем статус обработки
-          await ctx.telegram.editMessageText(
-            ctx.chat.id,
-            processingMessage.message_id,
-            null,
-            `🔄 *Обработка ${j+1}/${i} (фото ${k+1}/${lastPhotos.length})...*\n_Мощность: ${getIntensityName(settings.intensity)}_`,
-            { parse_mode: 'Markdown' }
-          ).catch(e => {});
-          
-          const outPath = await processImage(userId, lastPhotos[k], settings.intensity);
-          results.push({ type: 'photo', media: { source: outPath } });
-        } catch (e) {
-          console.error('Ошибка обработки фото:', e);
-        }
+// Обработка нажатий кнопок обработки фото
+const setupProcessHandlers = () => {
+  for (let i = 1; i <= 6; i++) {
+    bot.action(`process_${i}`, async (ctx) => {
+      const userId = ctx.from.id;
+      const lastPhotos = userLastPhotos.get(userId);
+      const settings = userSettings.get(userId) || getDefaultSettings();
+      
+      if (!lastPhotos || lastPhotos.length === 0) {
+        return safeAnswerCbQuery(ctx, '❌ Нет фото для обработки');
       }
       
-      if (results.length > 0) {
-        await ctx.replyWithMediaGroup(results).catch(e => console.error('Ошибка отправки медиагруппы:', e));
-        results.forEach(r => {
-          try {
-            fs.unlinkSync(r.media.source);
-          } catch (e) {
-            console.error('Ошибка удаления файла:', e);
-          }
-        });
+      // Сразу отвечаем на callback
+      await safeAnswerCbQuery(ctx, `Обрабатываю ${i} раз...`);
+      
+      try {
+        // Удаляем предыдущее сообщение с меню
+        await ctx.deleteMessage().catch(e => {});
+      } catch (e) {
+        console.error('Ошибка удаления сообщения:', e);
       }
-    }
+      
+      const processingMessage = await ctx.replyWithMarkdown(`🔄 *Обрабатываю ${lastPhotos.length} фото ${i} раз с мощностью ${getIntensityName(settings.intensity)}...*\n_Это может занять время..._`, {
+        parse_mode: 'Markdown'
+      }).catch(e => console.error('Ошибка отправки сообщения:', e));
 
-    // Удаляем сообщение о процессе обработки
-    try {
-      await ctx.telegram.deleteMessage(ctx.chat.id, processingMessage.message_id).catch(e => {});
-    } catch (e) {
-      console.error('Ошибка удаления сообщения:', e);
-    }
-    
-    await ctx.replyWithMarkdown(`✨ *Готово!*\nФото обработаны ${i} раз с мощностью ${getIntensityName(settings.intensity)}!`, {
-      ...getMainMenu(userId),
-      reply_to_message_id: ctx.message?.message_id
-    }).catch(e => console.error('Ошибка отправки сообщения:', e));
-  });
-}
+      // Обрабатываем i раз
+      for (let j = 0; j < i; j++) {
+        const results = [];
+        for (let k = 0; k < lastPhotos.length; k++) {
+          try {
+            // Обновляем статус обработки
+            await ctx.telegram.editMessageText(
+              ctx.chat.id,
+              processingMessage.message_id,
+              null,
+              `🔄 *Обработка ${j+1}/${i} (фото ${k+1}/${lastPhotos.length})...*\n_Мощность: ${getIntensityName(settings.intensity)}_`,
+              { parse_mode: 'Markdown' }
+            ).catch(e => {});
+            
+            const outPath = await processImage(userId, lastPhotos[k], settings.intensity);
+            results.push({ type: 'photo', media: { source: outPath } });
+          } catch (e) {
+            console.error('Ошибка обработки фото:', e);
+          }
+        }
+        
+        if (results.length > 0) {
+          await ctx.replyWithMediaGroup(results).catch(e => console.error('Ошибка отправки медиагруппы:', e));
+          results.forEach(r => {
+            try {
+              fs.unlinkSync(r.media.source);
+            } catch (e) {
+              console.error('Ошибка удаления файла:', e);
+            }
+          });
+        }
+      }
 
-// Установка мощности
-for (let i = 1; i <= 6; i++) {
-  bot.action(`intensity_${i}`, async (ctx) => {
-    const userId = ctx.from.id;
-    const settings = userSettings.get(userId) || getDefaultSettings();
-    
-    settings.intensity = i;
-    userSettings.set(userId, settings);
-    
-    await safeAnswerCbQuery(ctx, `Мощность установлена: ${getIntensityName(i)}`);
-    ctx.editMessageText(`⚙️ *Настройки эффектов:*\nТекущая мощность: ${getIntensityName(i)}`, {
-      parse_mode: 'Markdown',
-      ...getSettingsMenu(userId)
-    }).catch(e => console.error('Ошибка редактирования сообщения:', e));
-  });
-}
+      // Удаляем сообщение о процессе обработки
+      try {
+        await ctx.telegram.deleteMessage(ctx.chat.id, processingMessage.message_id).catch(e => {});
+      } catch (e) {
+        console.error('Ошибка удаления сообщения:', e);
+      }
+      
+      await ctx.replyWithMarkdown(`✨ *Готово!*\nФото обработаны ${i} раз с мощностью ${getIntensityName(settings.intensity)}!`, {
+        ...getMainMenu(userId),
+        reply_to_message_id: ctx.message?.message_id
+      }).catch(e => console.error('Ошибка отправки сообщения:', e));
+    });
+  }
+};
+setupProcessHandlers();
 
-bot.action('settings', (ctx) => {
+// Обработчики мощности
+const setupIntensityHandlers = () => {
+  for (let i = 1; i <= 6; i++) {
+    bot.action(`intensity_${i}`, async (ctx) => {
+      const userId = ctx.from.id;
+      const settings = userSettings.get(userId) || getDefaultSettings();
+      
+      settings.intensity = i;
+      userSettings.set(userId, settings);
+      
+      await safeAnswerCbQuery(ctx, `Мощность установлена: ${getIntensityName(i)}`);
+      ctx.editMessageText(`⚙️ *Настройки эффектов:*\nТекущая мощность: ${getIntensityName(i)}`, {
+        parse_mode: 'Markdown',
+        ...getSettingsMenu(userId)
+      }).catch(e => console.error('Ошибка редактирования сообщения:', e));
+    });
+  }
+};
+setupIntensityHandlers();
+
+// Основные обработчики действий
+bot.action('settings', async (ctx) => {
+  await safeAnswerCbQuery(ctx);
   const userId = ctx.from.id;
   ctx.editMessageText('⚙️ *Настройки эффектов:*\nВключи/выключи нужные эффекты:', {
     parse_mode: 'Markdown',
     ...getSettingsMenu(userId)
   }).catch(e => console.error('Ошибка редактирования сообщения:', e));
-  safeAnswerCbQuery(ctx);
 });
 
-bot.action('set_intensity', (ctx) => {
+bot.action('set_intensity', async (ctx) => {
+  await safeAnswerCbQuery(ctx);
   ctx.editMessageText('💪 *Выбери мощность обработки:*\n(Чем выше мощность, тем сильнее эффекты)', {
     parse_mode: 'Markdown',
     ...getIntensityMenu()
   }).catch(e => console.error('Ошибка редактирования сообщения:', e));
-  safeAnswerCbQuery(ctx);
 });
 
-bot.action('help', (ctx) => {
+bot.action('help', async (ctx) => {
+  await safeAnswerCbQuery(ctx);
   ctx.editMessageText(`
 ℹ️ *Помощь по UBT Uniccal!*
 
@@ -766,18 +774,18 @@ bot.action('help', (ctx) => {
     parse_mode: 'Markdown',
     ...getHelpMenu()
   }).catch(e => console.error('Ошибка редактирования сообщения:', e));
-  safeAnswerCbQuery(ctx);
 });
 
-bot.action('premium', (ctx) => {
-  safeAnswerCbQuery(ctx, '🚀 Премиум версия скоро будет доступна!', true);
+bot.action('premium', async (ctx) => {
+  await safeAnswerCbQuery(ctx, '🚀 Премиум версия скоро будет доступна!', true);
 });
 
-bot.action('support', (ctx) => {
-  safeAnswerCbQuery(ctx, '📩 Свяжитесь с @dimon_fomo для помощи');
+bot.action('support', async (ctx) => {
+  await safeAnswerCbQuery(ctx, '📩 Свяжитесь с @dimon_fomo для помощи');
 });
 
 bot.action('back_to_main', async (ctx) => {
+  await safeAnswerCbQuery(ctx);
   try {
     // Удаляем предыдущее сообщение
     await ctx.deleteMessage().catch(e => {});
@@ -787,13 +795,13 @@ bot.action('back_to_main', async (ctx) => {
   showMainMenu(ctx);
 });
 
-bot.action('back_to_settings', (ctx) => {
+bot.action('back_to_settings', async (ctx) => {
+  await safeAnswerCbQuery(ctx);
   const userId = ctx.from.id;
   ctx.editMessageText('⚙️ *Настройки эффектов:*\nВключи/выключи нужные эффекты:', {
     parse_mode: 'Markdown',
     ...getSettingsMenu(userId)
   }).catch(e => console.error('Ошибка редактирования сообщения:', e));
-  safeAnswerCbQuery(ctx);
 });
 
 // Тогглы настроек
@@ -812,20 +820,17 @@ const toggleSettings = {
 };
 
 Object.entries(toggleSettings).forEach(([action, setting]) => {
-  bot.action(action, (ctx) => {
+  bot.action(action, async (ctx) => {
     const userId = ctx.from.id;
     const settings = userSettings.get(userId) || getDefaultSettings();
     settings[setting] = !settings[setting];
     userSettings.set(userId, settings);
 
+    await safeAnswerCbQuery(ctx);
     ctx.editMessageReplyMarkup(getSettingsMenu(userId).reply_markup)
       .catch(e => console.error('Ошибка редактирования сообщения:', e));
-
-    safeAnswerCbQuery(ctx);
   });
 });
-
-
 
 // Глобальная обработка ошибок
 process.on('unhandledRejection', (error) => {
@@ -836,18 +841,20 @@ process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
 });
 
-
-
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json()); // 💡 ОБЯЗАТЕЛЬНО
+app.use(express.json());
 
-// ✅ ВАЖНО: Webhook обработка
+// Webhook обработка с увеличенным лимитом времени
 app.post('/', (req, res) => {
+  // Устанавливаем таймаут 10 минут
+  req.setTimeout(600000);
+  res.setTimeout(600000);
+
   bot.handleUpdate(req.body)
-    .then(() => res.sendStatus(200)) // ✔️ Быстрый ответ Telegram
+    .then(() => res.sendStatus(200))
     .catch((err) => {
       console.error('❌ Ошибка при handleUpdate:', err);
       res.sendStatus(500);
