@@ -1,0 +1,19 @@
+{
+  "name": "ubt-telegram-bot",
+  "version": "1.0.0",
+  "description": "Telegram bot for photo uniquization",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "telegraf": "^4.12.2",
+    "axios": "^1.6.8",
+    "jimp": "^0.22.10",
+    "express": "^4.18.2",
+    "node-fetch": "^2.6.9"
+  }
+}
