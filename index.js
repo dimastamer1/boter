@@ -825,10 +825,7 @@ Object.entries(toggleSettings).forEach(([action, setting]) => {
   });
 });
 
-// Запуск бота
-bot.launch()
-  .then(() => console.log('🤖 Bot is up and running'))
-  .catch(err => console.error('Ошибка запуска бота:', err));
+
 
 // Глобальная обработка ошибок
 process.on('unhandledRejection', (error) => {
@@ -838,6 +835,7 @@ process.on('unhandledRejection', (error) => {
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
 });
+
 
 // Express сервер для Render (чтобы бот не "засыпал")
 const express = require('express');
