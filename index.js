@@ -7,6 +7,8 @@ const path = require('path');
 const bot = new Telegraf('7523881725:AAFRjNltWDXco--Pd2N93WqfZQhSwpuFdnM');
 const API_TOKEN = 'jihhwop0pr8i763ojjhjjp990';
 
+
+
 // Хранилища данных
 const mediaGroups = new Map();
 const userLastPhotos = new Map();
@@ -815,14 +817,20 @@ Object.entries(toggleSettings).forEach(([action, setting]) => {
     const settings = userSettings.get(userId) || getDefaultSettings();
     settings[setting] = !settings[setting];
     userSettings.set(userId, settings);
-    ctx.editMessageReplyMarkup(getSettingsMenu(userId).reply_markup).catch(e => console.error('Ошибка редактирования сообщения:', e));
+
+    ctx.editMessageReplyMarkup(getSettingsMenu(userId).reply_markup)
+      .catch(e => console.error('Ошибка редактирования сообщения:', e));
+
     safeAnswerCbQuery(ctx);
   });
 });
 
+// Запуск бота
+bot.launch()
+  .then(() => console.log('🤖 Bot is up and running'))
+  .catch(err => console.error('Ошибка запуска бота:', err));
 
-
-// Обработка ошибок
+// Глобальная обработка ошибок
 process.on('unhandledRejection', (error) => {
   console.error('Unhandled Rejection:', error);
 });
@@ -831,6 +839,7 @@ process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
 });
 
+// Express сервер для Render (чтобы бот не "засыпал")
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
