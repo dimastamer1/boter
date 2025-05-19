@@ -837,11 +837,24 @@ process.on('uncaughtException', (error) => {
 });
 
 
-// Express сервер для Render (чтобы бот не "засыпал")
+
 const express = require('express');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.use(express.json()); // обязательно для body
+
+// ⬇️ ВАЖНО: Обработка Telegram Webhook
+app.post('/', (req, res) => {
+  bot.handleUpdate(req.body)
+    .then(() => res.sendStatus(200))
+    .catch(err => {
+      console.error("Ошибка при Webhook:", err);
+      res.sendStatus(500);
+    });
+});
+
+// Просто проверка что жив
 app.get("/", (req, res) => {
   res.send("🤖 UBT Bot is alive and running on Render!");
 });
