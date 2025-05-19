@@ -820,10 +820,7 @@ Object.entries(toggleSettings).forEach(([action, setting]) => {
   });
 });
 
-// Запуск бота
-bot.launch()
-  .then(() => console.log('🚀 Бот запущен'))
-  .catch(err => console.error('Ошибка запуска:', err));
+
 
 // Обработка ошибок
 process.on('unhandledRejection', (error) => {
