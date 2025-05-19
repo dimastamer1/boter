@@ -3,28 +3,18 @@ const axios = require('axios');
 const Jimp = require('jimp');
 const fs = require('fs');
 const path = require('path');
-const express = require('express');
 
 const bot = new Telegraf('7523881725:AAFRjNltWDXco--Pd2N93WqfZQhSwpuFdnM');
 const API_TOKEN = 'jihhwop0pr8i763ojjhjjp990';
-const app = express();
-const PORT = process.env.PORT || 3000;
 
-// Оптимизированные хранилища данных
+
+
+// Хранилища данных
 const mediaGroups = new Map();
 const userLastPhotos = new Map();
 const userSettings = new Map();
+const userStates = new Map();
 const userTokens = new Map();
-
-// Конфигурация производительности
-const PERFORMANCE_CONFIG = {
-  PROCESS_TIMEOUT: 300000, // 5 минут на обработку
-  MAX_PHOTOS: 10,
-  MAX_PHOTO_SIZE: 720,
-  BACKGROUND_QUALITY: 80,
-  OUTPUT_QUALITY: 85,
-  CACHE_TTL: 3600000 // 1 час
-};
 
 // Папка для ассетов
 const assetsDir = path.join(__dirname, 'assets');
@@ -35,99 +25,76 @@ if (!fs.existsSync(assetsDir)) {
   console.log('Создана папка assets. Добавьте туда изображения для смайликов и текстур.');
 }
 
-// Безопасный ответ на callback-запросы
-async function safeAnswerCbQuery(ctx, text = '', showAlert = false) {
-  try {
-    await ctx.answerCbQuery(text, { show_alert: showAlert });
-  } catch (e) {
-    console.log('Callback answer error:', e.message);
-  }
-}
-
-// Оптимизированная загрузка ассетов
+// Загрузка смайликов и текстур
 const loadAssets = () => {
-  const assets = { smileys: [], textures: [] };
+  const smileys = [];
+  const textures = [];
   
-  const loadDir = (dir, type) => {
-    if (fs.existsSync(dir)) {
-      fs.readdirSync(dir).forEach(file => {
-        if (file.match(/\.(jpg|jpeg|png)$/)) {
-          assets[type].push(path.join(dir, file));
-        }
-      });
-    }
-  };
+  const smileysDir = path.join(assetsDir, 'smileys');
+  if (fs.existsSync(smileysDir)) {
+    fs.readdirSync(smileysDir).forEach(file => {
+      if (file.match(/\.(jpg|jpeg|png)$/)) {
+        smileys.push(path.join(smileysDir, file));
+      }
+    });
+  }
   
-  loadDir(path.join(assetsDir, 'smileys'), 'smileys');
-  loadDir(path.join(assetsDir, 'textures'), 'textures');
+  const texturesDir = path.join(assetsDir, 'textures');
+  if (fs.existsSync(texturesDir)) {
+    fs.readdirSync(texturesDir).forEach(file => {
+      if (file.match(/\.(jpg|jpeg|png)$/)) {
+        textures.push(path.join(texturesDir, file));
+      }
+    });
+  }
   
-  return assets;
+  return { smileys, textures };
 };
 
 const { smileys, textures } = loadAssets();
 console.log(`Загружено ${smileys.length} смайликов и ${textures.length} текстур`);
 
-// Генерация фонов с кэшированием
-const backgroundCache = new Map();
-
+// Генерация фонов
 const generateBackground = async (type = 'random') => {
-  const cacheKey = type;
-  if (backgroundCache.has(cacheKey)) {
-    return backgroundCache.get(cacheKey);
-  }
-
   try {
     let url;
-    const baseUrl = 'https://picsum.photos';
-    const size = `${PERFORMANCE_CONFIG.MAX_PHOTO_SIZE}/${PERFORMANCE_CONFIG.MAX_PHOTO_SIZE}`;
-    
     switch(type) {
       case 'colorful':
-        url = `${baseUrl}/${size}`;
+        url = 'https://picsum.photos/720/1280';
         break;
       case 'grayscale':
-        url = `${baseUrl}/${size}?grayscale`;
+        url = 'https://picsum.photos/720/1280?grayscale';
         break;
       case 'blur':
-        url = `${baseUrl}/${size}?blur=5`;
+        url = 'https://picsum.photos/720/1280?blur=5';
         break;
       default:
         url = Math.random() > 0.5 ? 
-          `${baseUrl}/${size}` : 
-          `${baseUrl}/${size}?grayscale`;
+          'https://picsum.photos/720/1280' : 
+          'https://picsum.photos/720/1280?grayscale';
     }
     
-    const response = await axios.get(url, { 
-      responseType: 'arraybuffer',
-      timeout: 10000 
-    });
-    const buffer = Buffer.from(response.data);
-    
-    // Кэшируем на 1 час
-    backgroundCache.set(cacheKey, buffer);
-    setTimeout(() => backgroundCache.delete(cacheKey), PERFORMANCE_CONFIG.CACHE_TTL);
-    
-    return buffer;
+    const response = await axios.get(url, { responseType: 'arraybuffer' });
+    return Buffer.from(response.data);
   } catch (err) {
-    console.log('Using fallback background:', err.message);
+    // Fallback background
     const colors = [
       '#222222', '#3a0ca3', '#f72585', '#4cc9f0', '#2b2d42',
       '#ff9e00', '#8338ec', '#3a86ff', '#ff006e', '#fb5607'
     ];
     const color = colors[Math.floor(Math.random() * colors.length)];
-    const img = await Jimp.create(PERFORMANCE_CONFIG.MAX_PHOTO_SIZE, PERFORMANCE_CONFIG.MAX_PHOTO_SIZE, color);
-    return img.getBufferAsync(Jimp.MIME_JPEG);
+    const img = new Jimp(720, 1280, color);
+    return await img.getBufferAsync(Jimp.MIME_JPEG);
   }
 };
 
-// Оптимизированные эффекты
+// Эффекты для изображений
 const effects = {
   async addNoise(image, intensity = 500) {
     const w = image.bitmap.width;
     const h = image.bitmap.height;
-    const pixels = intensity / 1000;
 
-    for (let i = 0; i < w * h * pixels; i++) {
+    for (let i = 0; i < intensity; i++) {
       const x = Math.floor(Math.random() * w);
       const y = Math.floor(Math.random() * h);
       const color = Jimp.rgbaToInt(
@@ -155,7 +122,7 @@ const effects = {
         smiley.opacity(Math.random() * 0.5 + 0.3);
         image.composite(smiley, x, y);
       } catch (e) {
-        console.error('Ошибка добавления смайлика:', e.message);
+        console.error('Ошибка добавления смайлика:', e);
       }
     }
     return image;
@@ -171,7 +138,7 @@ const effects = {
       texture.opacity(opacity);
       image.composite(texture, 0, 0);
     } catch (e) {
-      console.error('Ошибка добавления текстуры:', e.message);
+      console.error('Ошибка добавления текстуры:', e);
     }
     return image;
   },
@@ -183,15 +150,21 @@ const effects = {
     const centerY = h / 2;
     const maxDist = Math.sqrt(centerX * centerX + centerY * centerY);
     
-    image.scan(0, 0, w, h, (x, y, idx) => {
-      const dist = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
-      const darkness = (dist / maxDist) * intensity;
-      
-      image.bitmap.data[idx] *= (1 - darkness);
-      image.bitmap.data[idx + 1] *= (1 - darkness);
-      image.bitmap.data[idx + 2] *= (1 - darkness);
-    });
-    
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        const dist = Math.sqrt(Math.pow(x - centerX, 2) + Math.pow(y - centerY, 2));
+        const darkness = (dist / maxDist) * intensity;
+        
+        const color = image.getPixelColor(x, y);
+        const rgba = Jimp.intToRGBA(color);
+        
+        const r = Math.max(0, rgba.r * (1 - darkness));
+        const g = Math.max(0, rgba.g * (1 - darkness));
+        const b = Math.max(0, rgba.b * (1 - darkness));
+        
+        image.setPixelColor(Jimp.rgbaToInt(r, g, b, rgba.a), x, y);
+      }
+    }
     return image;
   },
 
@@ -208,7 +181,7 @@ const effects = {
         mode: Jimp.BLEND_LIGHTEN
       });
     } catch (e) {
-      console.error('Ошибка добавления light leak:', e.message);
+      console.error('Ошибка добавления light leak:', e);
     }
     return image;
   },
@@ -217,15 +190,21 @@ const effects = {
     const w = image.bitmap.width;
     const h = image.bitmap.height;
     
-    image.scan(0, 0, w, h, (x, y, idx) => {
-      if (Math.random() > intensity) return;
-      
-      const grain = Math.floor(Math.random() * 60) - 30;
-      image.bitmap.data[idx] = Math.max(0, Math.min(255, image.bitmap.data[idx] + grain));
-      image.bitmap.data[idx + 1] = Math.max(0, Math.min(255, image.bitmap.data[idx + 1] + grain));
-      image.bitmap.data[idx + 2] = Math.max(0, Math.min(255, image.bitmap.data[idx + 2] + grain));
-    });
-    
+    for (let y = 0; y < h; y++) {
+      for (let x = 0; x < w; x++) {
+        if (Math.random() > intensity) continue;
+        
+        const color = image.getPixelColor(x, y);
+        const rgba = Jimp.intToRGBA(color);
+        
+        const grain = Math.floor(Math.random() * 60) - 30;
+        const r = Math.max(0, Math.min(255, rgba.r + grain));
+        const g = Math.max(0, Math.min(255, rgba.g + grain));
+        const b = Math.max(0, Math.min(255, rgba.b + grain));
+        
+        image.setPixelColor(Jimp.rgbaToInt(r, g, b, rgba.a), x, y);
+      }
+    }
     return image;
   },
 
@@ -240,15 +219,19 @@ const effects = {
   },
 
   async applyColorFilter(image, filter = 'sepia') {
-    const filters = {
-      sepia: () => image.sepia(),
-      vintage: () => image.color([{ apply: 'mix', params: ['#704214', 30] }]),
-      cool: () => image.color([{ apply: 'mix', params: ['#1e90ff', 10] }]),
-      warm: () => image.color([{ apply: 'mix', params: ['#ff4500', 10] }])
-    };
-    
-    if (filters[filter]) {
-      filters[filter]();
+    switch(filter) {
+      case 'sepia':
+        image.sepia();
+        break;
+      case 'vintage':
+        image.color([{ apply: 'mix', params: ['#704214', 30] }]);
+        break;
+      case 'cool':
+        image.color([{ apply: 'mix', params: ['#1e90ff', 10] }]);
+        break;
+      case 'warm':
+        image.color([{ apply: 'mix', params: ['#ff4500', 10] }]);
+        break;
     }
     return image;
   },
@@ -272,12 +255,11 @@ const effects = {
   }
 };
 
-// Оптимизированная обработка изображения
+// Обработка изображения
 async function processImage(userId, buffer, intensity = 3) {
   const settings = userSettings.get(userId) || getDefaultSettings();
   const filters = ['sepia', 'vintage', 'cool', 'warm'];
   
-  // Генерация фона
   let bgImage = await Jimp.read(await generateBackground(
     settings.colorfulBackground ? 'colorful' : 'random'
   ));
@@ -286,7 +268,6 @@ async function processImage(userId, buffer, intensity = 3) {
     bgImage.blur(10);
   }
   
-  // Применение эффектов к фону
   await effects.addNoise(bgImage, settings.noiseIntensity * intensity / 3);
   
   if (settings.addTexture) {
@@ -297,20 +278,11 @@ async function processImage(userId, buffer, intensity = 3) {
     await effects.addVignette(bgImage, 0.7 * intensity / 3);
   }
 
-  // Обработка основного изображения
   let mainImage = await Jimp.read(buffer);
   const maxWidth = bgImage.bitmap.width * 0.7;
   const maxHeight = bgImage.bitmap.height * 0.7;
-  const scale = Math.min(
-    maxWidth / mainImage.bitmap.width, 
-    maxHeight / mainImage.bitmap.height, 
-    1
-  );
-  
-  mainImage.resize(
-    Math.floor(mainImage.bitmap.width * scale), 
-    Math.floor(mainImage.bitmap.height * scale)
-  );
+  const scale = Math.min(maxWidth / mainImage.bitmap.width, maxHeight / mainImage.bitmap.height, 1);
+  mainImage.resize(mainImage.bitmap.width * scale, mainImage.bitmap.height * scale);
   
   if (settings.blurMainImage) {
     mainImage.blur(1 * intensity / 3);
@@ -320,7 +292,6 @@ async function processImage(userId, buffer, intensity = 3) {
     await effects.addGrain(mainImage, 0.3 * intensity / 3);
   }
 
-  // Позиционирование основного изображения
   const offsetX = Math.floor(Math.random() * 31) - 15;
   const offsetY = Math.floor(Math.random() * 31) - 15;
   const x = Math.floor((bgImage.bitmap.width - mainImage.bitmap.width) / 2) + offsetX;
@@ -328,7 +299,7 @@ async function processImage(userId, buffer, intensity = 3) {
 
   bgImage.composite(mainImage, x, y);
 
-  // Дополнительные эффекты
+  // Применяем эффекты несколько раз для большей уникальности
   for (let i = 0; i < intensity; i++) {
     if (settings.addSmileys && smileys.length > 0) {
       await effects.addSmileys(bgImage, settings.smileyCount * intensity / 3);
@@ -351,9 +322,8 @@ async function processImage(userId, buffer, intensity = 3) {
     }
   }
 
-  // Сохранение результата
-  const outPath = path.join(__dirname, `out_${userId}_${Date.now()}.jpg`);
-  await bgImage.quality(PERFORMANCE_CONFIG.OUTPUT_QUALITY).writeAsync(outPath);
+  const outPath = path.join(__dirname, `out_${userId}_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`);
+  await bgImage.quality(90).writeAsync(outPath);
   return outPath;
 }
 
@@ -373,11 +343,11 @@ function getDefaultSettings() {
     colorFilter: false,
     colorfulBackground: true,
     hasToken: false,
-    intensity: 3
+    intensity: 3 // Средняя мощность по умолчанию
   };
 }
 
-// Оптимизированные меню
+// Меню и клавиатуры
 function getMainMenu(userId) {
   const settings = userSettings.get(userId) || getDefaultSettings();
   
@@ -476,6 +446,23 @@ function getHelpMenu() {
   ]);
 }
 
+// Глобальный обработчик ошибок для callback-запросов
+bot.catch((err, ctx) => {
+  console.error(`Error for ${ctx.updateType}:`, err);
+  if (ctx.callbackQuery) {
+    return ctx.answerCbQuery('⚠️ Произошла ошибка').catch(() => {});
+  }
+});
+
+// Безопасный ответ на callback-запросы
+async function safeAnswerCbQuery(ctx, text, showAlert = false) {
+  try {
+    await ctx.answerCbQuery(text || '', { show_alert: showAlert });
+  } catch (e) {
+    console.log('Callback answer error:', e.message);
+  }
+}
+
 // Обработчики команд
 bot.start((ctx) => {
   const userId = ctx.from.id;
@@ -486,6 +473,7 @@ bot.start((ctx) => {
   
   const settings = userSettings.get(userId);
   
+  // Проверяем, есть ли сохраненный токен для пользователя
   if (userTokens.has(userId) && userTokens.get(userId) === API_TOKEN) {
     settings.hasToken = true;
     userSettings.set(userId, settings);
@@ -497,7 +485,9 @@ bot.start((ctx) => {
 Для использования бота требуется *API токен*.
 
 Пожалуйста, введи API токен, который ты получил:
-    `).catch(e => console.error('Ошибка отправки сообщения:', e.message));
+    `, {
+      reply_to_message_id: ctx.message?.message_id
+    }).catch(e => console.error('Ошибка отправки сообщения:', e));
   }
 });
 
@@ -518,7 +508,10 @@ function showMainMenu(ctx) {
 5. Получи потрясающий результат!
 
 _Выбери действие:_
-  `, getMainMenu(userId)).catch(e => console.error('Ошибка отправки меню:', e.message));
+  `, {
+    ...getMainMenu(userId),
+    reply_to_message_id: ctx.message?.message_id
+  }).catch(e => console.error('Ошибка отправки меню:', e));
 }
 
 bot.on('text', (ctx) => {
@@ -535,7 +528,7 @@ bot.on('text', (ctx) => {
     if (text === API_TOKEN) {
       settings.hasToken = true;
       userSettings.set(userId, settings);
-      userTokens.set(userId, API_TOKEN);
+      userTokens.set(userId, API_TOKEN); // Сохраняем токен для пользователя
       
       ctx.replyWithMarkdown(`
 ✅ *Токен принят!* Теперь ты можешь использовать все возможности бота!
@@ -545,24 +538,32 @@ bot.on('text', (ctx) => {
 *Текущая мощность:* ${getIntensityName(settings.intensity)}
 
 _Выбери действие:_
-      `, getMainMenu(userId)).then(() => {
+      `, {
+        ...getMainMenu(userId),
+        reply_to_message_id: ctx.message.message_id
+      }).then(() => {
+        // Удаляем предыдущие сообщения
         if (ctx.message.message_id > 1) {
-          ctx.deleteMessage(ctx.message.message_id - 1).catch(() => {});
+          ctx.deleteMessage(ctx.message.message_id - 1).catch(e => {});
         }
-      }).catch(e => console.error('Ошибка отправки меню:', e.message));
+      }).catch(e => console.error('Ошибка отправки меню:', e));
     } else {
-      ctx.reply('❌ Неверный токен. Попробуй еще раз.').catch(e => console.error('Ошибка отправки сообщения:', e.message));
+      ctx.reply('❌ Неверный токен. Попробуй еще раз.', {
+        reply_to_message_id: ctx.message.message_id
+      }).catch(e => console.error('Ошибка отправки сообщения:', e));
     }
   }
 });
 
-// Обработка фото с оптимизацией
+// Обработка фото
 bot.on('photo', async (ctx) => {
   const userId = ctx.from.id;
   const settings = userSettings.get(userId) || getDefaultSettings();
   
   if (!settings.hasToken) {
-    return ctx.reply('🔒 Для использования бота требуется API токен.').catch(e => console.error('Ошибка отправки сообщения:', e.message));
+    return ctx.reply('🔒 Для использования бота требуется API токен.', {
+      reply_to_message_id: ctx.message.message_id
+    }).catch(e => console.error('Ошибка отправки сообщения:', e));
   }
   
   const mediaGroupId = ctx.message.media_group_id;
@@ -574,50 +575,50 @@ bot.on('photo', async (ctx) => {
         const messages = mediaGroups.get(mediaGroupId);
         if (!messages) return;
 
-        const sorted = messages.sort((a, b) => a.message_id - b.message_id).slice(0, PERFORMANCE_CONFIG.MAX_PHOTOS);
+        const sorted = messages.sort((a, b) => a.message_id - b.message_id).slice(0, 10);
         mediaGroups.delete(mediaGroupId);
 
-        await ctx.replyWithMarkdown(`📥 *Получил ${sorted.length} фото, готов к обработке...*`).catch(e => console.error('Ошибка отправки сообщения:', e.message));
+        await ctx.replyWithMarkdown(`📥 *Получил ${sorted.length} фото, готов к обработке...*`, {
+          reply_to_message_id: sorted[sorted.length - 1].message_id
+        }).catch(e => console.error('Ошибка отправки сообщения:', e));
 
         const photoBuffers = [];
         for (const msg of sorted) {
-          try {
-            const largestPhoto = msg.photo[msg.photo.length - 1];
-            const fileLink = await ctx.telegram.getFileLink(largestPhoto.file_id);
-            const buffer = (await axios.get(fileLink.href, { 
-              responseType: 'arraybuffer',
-              timeout: 10000 
-            })).data;
-            photoBuffers.push(buffer);
-          } catch (e) {
-            console.error('Ошибка загрузки фото:', e.message);
-          }
+          const largestPhoto = msg.photo[msg.photo.length - 1];
+          const fileLink = await ctx.telegram.getFileLink(largestPhoto.file_id);
+          const buffer = (await axios.get(fileLink.href, { responseType: 'arraybuffer' })).data;
+          photoBuffers.push(buffer);
         }
 
-        if (photoBuffers.length > 0) {
-          userLastPhotos.set(userId, photoBuffers);
-          await ctx.replyWithMarkdown('📷 Выбери сколько раз обработать эти фото:', getProcessMenu()).catch(e => console.error('Ошибка отправки меню:', e.message));
-        }
+        userLastPhotos.set(userId, photoBuffers);
+        await ctx.replyWithMarkdown('📷 Выбери сколько раз обработать эти фото:', {
+          ...getProcessMenu(),
+          reply_to_message_id: ctx.message.message_id
+        }).catch(e => console.error('Ошибка отправки меню:', e));
       }, 1000);
     }
 
     mediaGroups.get(mediaGroupId).push(ctx.message);
   } else {
     try {
-      await ctx.replyWithMarkdown('📥 *Получил фото, готов к обработке...*').catch(e => console.error('Ошибка отправки сообщения:', e.message));
+      await ctx.replyWithMarkdown('📥 *Получил фото, готов к обработке...*', {
+        reply_to_message_id: ctx.message.message_id
+      }).catch(e => console.error('Ошибка отправки сообщения:', e));
       
       const largestPhoto = ctx.message.photo[ctx.message.photo.length - 1];
       const fileLink = await ctx.telegram.getFileLink(largestPhoto.file_id);
-      const buffer = (await axios.get(fileLink.href, { 
-        responseType: 'arraybuffer',
-        timeout: 10000 
-      })).data;
+      const buffer = (await axios.get(fileLink.href, { responseType: 'arraybuffer' })).data;
 
       userLastPhotos.set(userId, [buffer]);
-      await ctx.replyWithMarkdown('📷 Выбери сколько раз обработать это фото:', getProcessMenu()).catch(e => console.error('Ошибка отправки меню:', e.message));
+      await ctx.replyWithMarkdown('📷 Выбери сколько раз обработать это фото:', {
+        ...getProcessMenu(),
+        reply_to_message_id: ctx.message.message_id
+      }).catch(e => console.error('Ошибка отправки меню:', e));
     } catch (err) {
-      console.error('Ошибка загрузки фото:', err.message);
-      ctx.reply('⚠️ Произошла ошибка при загрузке фото. Попробуй снова.').catch(e => console.error('Ошибка отправки сообщения:', e.message));
+      console.error('Ошибка загрузки фото:', err);
+      ctx.reply('⚠️ Произошла ошибка при загрузке фото. Попробуй снова.', {
+        reply_to_message_id: ctx.message.message_id
+      }).catch(e => console.error('Ошибка отправки сообщения:', e));
     }
   }
 });
@@ -632,10 +633,11 @@ bot.action('process', async (ctx) => {
   }
 
   await safeAnswerCbQuery(ctx);
-  await ctx.editMessageText('📷 Выбери сколько раз обработать фото:', getProcessMenu()).catch(e => console.error('Ошибка редактирования сообщения:', e.message));
+  await ctx.editMessageText('📷 Выбери сколько раз обработать фото:', {
+    ...getProcessMenu()
+  }).catch(e => console.error('Ошибка редактирования сообщения:', e));
 });
 
-// Обработка фото с таймаутом
 for (let i = 1; i <= 6; i++) {
   bot.action(`process_${i}`, async (ctx) => {
     const userId = ctx.from.id;
@@ -649,64 +651,60 @@ for (let i = 1; i <= 6; i++) {
     await safeAnswerCbQuery(ctx, `Обрабатываю ${i} раз...`);
     
     try {
-      await ctx.deleteMessage().catch(() => {});
+      // Удаляем предыдущее сообщение с меню
+      await ctx.deleteMessage().catch(e => {});
     } catch (e) {
-      console.error('Ошибка удаления сообщения:', e.message);
+      console.error('Ошибка удаления сообщения:', e);
     }
     
-    const processingMessage = await ctx.replyWithMarkdown(`🔄 *Обрабатываю ${lastPhotos.length} фото ${i} раз с мощностью ${getIntensityName(settings.intensity)}...*\n_Это может занять время..._`).catch(e => console.error('Ошибка отправки сообщения:', e.message));
+    const processingMessage = await ctx.replyWithMarkdown(`🔄 *Обрабатываю ${lastPhotos.length} фото ${i} раз с мощностью ${getIntensityName(settings.intensity)}...*\n_Это может занять время..._`, {
+      parse_mode: 'Markdown'
+    }).catch(e => console.error('Ошибка отправки сообщения:', e));
 
-    // Обработка с таймаутом
-    const timeoutPromise = new Promise((_, reject) => 
-      setTimeout(() => reject(new Error('Превышено время обработки')), PERFORMANCE_CONFIG.PROCESS_TIMEOUT)
-    );
-    
-    try {
-      const processPromise = (async () => {
-        for (let j = 0; j < i; j++) {
-          const results = [];
-          for (let k = 0; k < lastPhotos.length; k++) {
-            try {
-              await ctx.telegram.editMessageText(
-                ctx.chat.id,
-                processingMessage.message_id,
-                null,
-                `🔄 *Обработка ${j+1}/${i} (фото ${k+1}/${lastPhotos.length})...*\n_Мощность: ${getIntensityName(settings.intensity)}_`
-              ).catch(() => {});
-              
-              const outPath = await processImage(userId, lastPhotos[k], settings.intensity);
-              results.push({ type: 'photo', media: { source: outPath } });
-            } catch (e) {
-              console.error('Ошибка обработки фото:', e.message);
-            }
-          }
+    // Обрабатываем i раз
+    for (let j = 0; j < i; j++) {
+      const results = [];
+      for (let k = 0; k < lastPhotos.length; k++) {
+        try {
+          // Обновляем статус обработки
+          await ctx.telegram.editMessageText(
+            ctx.chat.id,
+            processingMessage.message_id,
+            null,
+            `🔄 *Обработка ${j+1}/${i} (фото ${k+1}/${lastPhotos.length})...*\n_Мощность: ${getIntensityName(settings.intensity)}_`,
+            { parse_mode: 'Markdown' }
+          ).catch(e => {});
           
-          if (results.length > 0) {
-            await ctx.replyWithMediaGroup(results).catch(e => console.error('Ошибка отправки медиагруппы:', e.message));
-            results.forEach(r => {
-              try {
-                fs.unlinkSync(r.media.source);
-              } catch (e) {
-                console.error('Ошибка удаления файла:', e.message);
-              }
-            });
-          }
+          const outPath = await processImage(userId, lastPhotos[k], settings.intensity);
+          results.push({ type: 'photo', media: { source: outPath } });
+        } catch (e) {
+          console.error('Ошибка обработки фото:', e);
         }
-      })();
-      
-      await Promise.race([processPromise, timeoutPromise]);
-    } catch (e) {
-      console.error('Ошибка обработки:', e.message);
-      await ctx.reply('⚠️ Произошла ошибка при обработке фото. Попробуй снова.').catch(() => {});
-    } finally {
-      try {
-        await ctx.telegram.deleteMessage(ctx.chat.id, processingMessage.message_id).catch(() => {});
-      } catch (e) {
-        console.error('Ошибка удаления сообщения:', e.message);
       }
       
-      await ctx.replyWithMarkdown(`✨ *Готово!*\nФото обработаны ${i} раз с мощностью ${getIntensityName(settings.intensity)}!`, getMainMenu(userId)).catch(e => console.error('Ошибка отправки сообщения:', e.message));
+      if (results.length > 0) {
+        await ctx.replyWithMediaGroup(results).catch(e => console.error('Ошибка отправки медиагруппы:', e));
+        results.forEach(r => {
+          try {
+            fs.unlinkSync(r.media.source);
+          } catch (e) {
+            console.error('Ошибка удаления файла:', e);
+          }
+        });
+      }
     }
+
+    // Удаляем сообщение о процессе обработки
+    try {
+      await ctx.telegram.deleteMessage(ctx.chat.id, processingMessage.message_id).catch(e => {});
+    } catch (e) {
+      console.error('Ошибка удаления сообщения:', e);
+    }
+    
+    await ctx.replyWithMarkdown(`✨ *Готово!*\nФото обработаны ${i} раз с мощностью ${getIntensityName(settings.intensity)}!`, {
+      ...getMainMenu(userId),
+      reply_to_message_id: ctx.message?.message_id
+    }).catch(e => console.error('Ошибка отправки сообщения:', e));
   });
 }
 
@@ -723,7 +721,7 @@ for (let i = 1; i <= 6; i++) {
     ctx.editMessageText(`⚙️ *Настройки эффектов:*\nТекущая мощность: ${getIntensityName(i)}`, {
       parse_mode: 'Markdown',
       ...getSettingsMenu(userId)
-    }).catch(e => console.error('Ошибка редактирования сообщения:', e.message));
+    }).catch(e => console.error('Ошибка редактирования сообщения:', e));
   });
 }
 
@@ -732,7 +730,7 @@ bot.action('settings', (ctx) => {
   ctx.editMessageText('⚙️ *Настройки эффектов:*\nВключи/выключи нужные эффекты:', {
     parse_mode: 'Markdown',
     ...getSettingsMenu(userId)
-  }).catch(e => console.error('Ошибка редактирования сообщения:', e.message));
+  }).catch(e => console.error('Ошибка редактирования сообщения:', e));
   safeAnswerCbQuery(ctx);
 });
 
@@ -740,7 +738,7 @@ bot.action('set_intensity', (ctx) => {
   ctx.editMessageText('💪 *Выбери мощность обработки:*\n(Чем выше мощность, тем сильнее эффекты)', {
     parse_mode: 'Markdown',
     ...getIntensityMenu()
-  }).catch(e => console.error('Ошибка редактирования сообщения:', e.message));
+  }).catch(e => console.error('Ошибка редактирования сообщения:', e));
   safeAnswerCbQuery(ctx);
 });
 
@@ -767,7 +765,7 @@ bot.action('help', (ctx) => {
   `, {
     parse_mode: 'Markdown',
     ...getHelpMenu()
-  }).catch(e => console.error('Ошибка редактирования сообщения:', e.message));
+  }).catch(e => console.error('Ошибка редактирования сообщения:', e));
   safeAnswerCbQuery(ctx);
 });
 
@@ -781,9 +779,10 @@ bot.action('support', (ctx) => {
 
 bot.action('back_to_main', async (ctx) => {
   try {
-    await ctx.deleteMessage().catch(() => {});
+    // Удаляем предыдущее сообщение
+    await ctx.deleteMessage().catch(e => {});
   } catch (e) {
-    console.error('Ошибка удаления сообщения:', e.message);
+    console.error('Ошибка удаления сообщения:', e);
   }
   showMainMenu(ctx);
 });
@@ -793,7 +792,7 @@ bot.action('back_to_settings', (ctx) => {
   ctx.editMessageText('⚙️ *Настройки эффектов:*\nВключи/выключи нужные эффекты:', {
     parse_mode: 'Markdown',
     ...getSettingsMenu(userId)
-  }).catch(e => console.error('Ошибка редактирования сообщения:', e.message));
+  }).catch(e => console.error('Ошибка редактирования сообщения:', e));
   safeAnswerCbQuery(ctx);
 });
 
@@ -820,40 +819,42 @@ Object.entries(toggleSettings).forEach(([action, setting]) => {
     userSettings.set(userId, settings);
 
     ctx.editMessageReplyMarkup(getSettingsMenu(userId).reply_markup)
-      .catch(e => console.error('Ошибка редактирования сообщения:', e.message));
+      .catch(e => console.error('Ошибка редактирования сообщения:', e));
 
     safeAnswerCbQuery(ctx);
   });
 });
 
-// Глобальная обработка ошибок
-bot.catch((err, ctx) => {
-  console.error(`Error for ${ctx.updateType}:`, err.message);
-  if (ctx.callbackQuery) {
-    return safeAnswerCbQuery(ctx, '⚠️ Произошла ошибка');
-  }
-});
 
+
+// Глобальная обработка ошибок
 process.on('unhandledRejection', (error) => {
-  console.error('Unhandled Rejection:', error.message);
+  console.error('Unhandled Rejection:', error);
 });
 
 process.on('uncaughtException', (error) => {
-  console.error('Uncaught Exception:', error.message);
+  console.error('Uncaught Exception:', error);
 });
 
-// Express сервер
-app.use(express.json());
 
+
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json()); // 💡 ОБЯЗАТЕЛЬНО
+
+// ✅ ВАЖНО: Webhook обработка
 app.post('/', (req, res) => {
   bot.handleUpdate(req.body)
-    .then(() => res.sendStatus(200))
+    .then(() => res.sendStatus(200)) // ✔️ Быстрый ответ Telegram
     .catch((err) => {
-      console.error('❌ Ошибка при handleUpdate:', err.message);
+      console.error('❌ Ошибка при handleUpdate:', err);
       res.sendStatus(500);
     });
 });
 
+// Тест GET-запроса
 app.get('/', (req, res) => {
   res.send('🤖 Бот жив и принимает Webhook');
 });
