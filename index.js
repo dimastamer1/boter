@@ -833,3 +833,15 @@ process.on('unhandledRejection', (error) => {
 process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
 });
+
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.get("/", (req, res) => {
+  res.send("🤖 UBT Bot is alive and running on Render!");
+});
+
+app.listen(PORT, () => {
+  console.log(`✅ Express server is running on port ${PORT}`);
+});
