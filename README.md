@@ -18,4 +18,9 @@
 
 ```
 curl -F "url=https://uniccal-bot.onrender.com/" https://api.telegram.org/bot<ТВОЙ_ТОКЕН>/setWebhook
+
+
+ [Markup.button.callback('4 раза 💪', 'process_4')],
+    [Markup.button.callback('5 раз 🔥', 'process_5')],
+    [Markup.button.callback('6 раз 🚀', 'process_6')],
 ```

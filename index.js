@@ -434,9 +434,6 @@ function getProcessMenu() {
     [Markup.button.callback('1 раз 😊', 'process_1')],
     [Markup.button.callback('2 раза 😃', 'process_2')],
     [Markup.button.callback('3 раза 😎', 'process_3')],
-    [Markup.button.callback('4 раза 💪', 'process_4')],
-    [Markup.button.callback('5 раз 🔥', 'process_5')],
-    [Markup.button.callback('6 раз 🚀', 'process_6')],
     [Markup.button.callback('🔙 Назад', 'back_to_main')]
   ]);
 }
