@@ -838,31 +838,15 @@ process.on('uncaughtException', (error) => {
   console.error('Uncaught Exception:', error);
 });
 
-const express = require('express');
-const app = express();
-const PORT = process.env.PORT || 3000;
+// Запуск бота в режиме long polling (без Webhook)
+bot.launch()
+  .then(() => {
+    console.log('✅ Бот запущен в режиме polling');
+  })
+  .catch((err) => {
+    console.error('❌ Ошибка запуска бота:', err);
+  });
 
-app.use(express.json());
-
-// Webhook обработка с увеличенным лимитом времени
-app.post('/', (req, res) => {
-  // Устанавливаем таймаут 10 минут
-  req.setTimeout(600000);
-  res.setTimeout(600000);
-
-  bot.handleUpdate(req.body)
-    .then(() => res.sendStatus(200))
-    .catch((err) => {
-      console.error('❌ Ошибка при handleUpdate:', err);
-      res.sendStatus(500);
-    });
-});
-
-// Тест GET-запроса
-app.get('/', (req, res) => {
-  res.send('🤖 Бот жив и принимает Webhook');
-});
-
-app.listen(PORT, () => {
-  console.log(`✅ Express-сервер работает на порту ${PORT}`);
-});
+// Обработка ошибок
+process.on('unhandledRejection', (err) => console.error('❗ Unhandled:', err));
+process.on('uncaughtException', (err) => console.error('❗ Exception:', err));

@@ -24,3 +24,34 @@ curl -F "url=https://uniccal-bot.onrender.com/" https://api.telegram.org/bot<Т�
     [Markup.button.callback('5 раз 🔥', 'process_5')],
     [Markup.button.callback('6 раз 🚀', 'process_6')],
 ```
+
+
+
+const express = require('express');
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+app.use(express.json());
+
+// Webhook обработка с увеличенным лимитом времени
+app.post('/', (req, res) => {
+  // Устанавливаем таймаут 10 минут
+  req.setTimeout(600000);
+  res.setTimeout(600000);
+
+  bot.handleUpdate(req.body)
+    .then(() => res.sendStatus(200))
+    .catch((err) => {
+      console.error('❌ Ошибка при handleUpdate:', err);
+      res.sendStatus(500);
+    });
+});
+
+// Тест GET-запроса
+app.get('/', (req, res) => {
+  res.send('🤖 Бот жив и принимает Webhook');
+});
+
+app.listen(PORT, () => {
+  console.log(`✅ Express-сервер работает на порту ${PORT}`);
+});
